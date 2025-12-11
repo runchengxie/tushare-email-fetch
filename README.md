@@ -5,7 +5,7 @@
 ## 它能干啥 (What it grabs)
 
 - **抓 ST 股 (`stock_st`)**：基于指定的 `trade_date`（默认是北京时间当天）。*帮你看看今天谁在雷区蹦迪。*
-- **抓指数权重 (`index_weight`)**：针对可配置的指数代码（默认套餐：沪深300 `000300.SH` 和中证500 `000905.SH`），抓取当月范围内的数据。
+- **抓指数权重 (`index_weight`)**：针对可配置的指数代码（默认套餐：沪深300 `000300.SH` 和中证500 `000905.SH`），默认抓 **2016-01-01 至今（北京时间）** 的成分股权重，可用环境变量覆盖。
 
 ## 本地手动挡 (Local run)
 
@@ -24,8 +24,8 @@ python scripts/fetch_tushare.py
 本地测试时的可选环境变量（以此来假装是 Actions 在跑）：
 
 - `TRADE_DATE=YYYYMMDD`
-- `INDEX_START_DATE=YYYYMMDD`
-- `INDEX_END_DATE=YYYYMMDD`
+- `INDEX_START_DATE=YYYYMMDD`（默认 `20160101`）
+- `INDEX_END_DATE=YYYYMMDD`（默认对齐到北京时间“今天”）
 - `INDEX_CODES=000300.SH,000905.SH`
 - 邮件配置 (可选)：`EMAIL_TO`, `EMAIL_FROM`, `SMTP_SERVER`, `SMTP_PORT` (默认 587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (设为 `false` 可禁用)。
 

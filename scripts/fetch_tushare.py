@@ -3,14 +3,13 @@
 
 from __future__ import annotations
 
-import calendar
 import os
 import smtplib
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -19,6 +18,7 @@ import tushare as ts
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 BJT = ZoneInfo("Asia/Shanghai")
+DEFAULT_INDEX_START_DATE = "20160101"
 
 
 @dataclass
@@ -47,12 +47,6 @@ def ensure_data_dir(path: Path) -> None:
 def trade_date_today() -> str:
     today = datetime.now(tz=BJT).date()
     return today.strftime("%Y%m%d")
-
-
-def current_month_range(today: date) -> Tuple[str, str]:
-    first_day = today.replace(day=1)
-    last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1])
-    return first_day.strftime("%Y%m%d"), last_day.strftime("%Y%m%d")
 
 
 def init_tushare() -> ts.pro_api:
@@ -153,11 +147,10 @@ def send_email(summary: str, attachments: List[Path]) -> None:
 
 
 def main() -> None:
-    trade_date = optional_env("TRADE_DATE", trade_date_today())
-    today = datetime.now(tz=BJT).date()
-    default_start, default_end = current_month_range(today)
-    start_date = optional_env("INDEX_START_DATE", default_start)
-    end_date = optional_env("INDEX_END_DATE", default_end)
+    today_str = trade_date_today()
+    trade_date = optional_env("TRADE_DATE", today_str)
+    start_date = optional_env("INDEX_START_DATE", DEFAULT_INDEX_START_DATE)
+    end_date = optional_env("INDEX_END_DATE", today_str)
 
     pro = init_tushare()
     results: List[FetchResult] = []
