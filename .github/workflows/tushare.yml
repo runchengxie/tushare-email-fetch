@@ -1,0 +1,61 @@
+name: tushare-daily
+
+on:
+  schedule:
+    # 09:25 Beijing time (01:25 UTC), Monday through Friday
+    - cron: "25 1 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      trade_date:
+        description: "Override trade_date for stock_st (YYYYMMDD)"
+        required: false
+      index_start_date:
+        description: "Override index start date (YYYYMMDD)"
+        required: false
+      index_end_date:
+        description: "Override index end date (YYYYMMDD)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch Tushare data
+        env:
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_STARTTLS: ${{ secrets.SMTP_STARTTLS }}
+          INDEX_CODES: ${{ secrets.INDEX_CODES }}
+          TRADE_DATE: ${{ github.event.inputs.trade_date }}
+          INDEX_START_DATE: ${{ github.event.inputs.index_start_date }}
+          INDEX_END_DATE: ${{ github.event.inputs.index_end_date }}
+        run: python scripts/fetch_tushare.py
+
+      - name: Commit data back to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git add data/ || true
+          git commit -m "chore: update tushare data $(date -u +'%Y-%m-%d')" || exit 0
+          git push
