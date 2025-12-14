@@ -4,8 +4,11 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+
 from fetch_tushare import (
     DATA_DIR,
+    ensure_data_dir,
     fetch_index_weight,
     fetch_stock_st,
     init_tushare,
@@ -50,6 +53,54 @@ def load_trade_dates(pro, start: date, end: date) -> list[date]:
         datetime.strptime(str(cal_date), "%Y%m%d").date() for cal_date in trading_days
     ]
 
+def expand_index_weight_daily(
+    df: pd.DataFrame, trade_dates: list[date], output_path: Path
+) -> int:
+    """Expand index_weight snapshots into daily as-of rows (forward-fill until next rebalance)."""
+    ensure_data_dir(output_path)
+
+    if df.empty:
+        pd.DataFrame(columns=["trade_date", "snapshot_date"]).to_csv(
+            output_path, index=False
+        )
+        return 0
+
+    df = df.copy()
+    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+    trade_dates = sorted(trade_dates)
+    base_cols = [col for col in df.columns if col != "trade_date"]
+
+    frames = []
+    for _, g in df.groupby("index_code"):
+        g = g.sort_values("trade_date")
+        snap_dates = g["trade_date"].drop_duplicates().tolist()
+        for i, snap_date in enumerate(snap_dates):
+            next_snap = snap_dates[i + 1] if i + 1 < len(snap_dates) else None
+            segment_days = [
+                d for d in trade_dates if d >= snap_date and (next_snap is None or d < next_snap)
+            ]
+            if not segment_days:
+                continue
+            snap_rows = g[g["trade_date"] == snap_date][base_cols].copy()
+            snap_rows.insert(0, "snapshot_date", snap_date)
+            repeated = pd.concat(
+                [snap_rows.assign(trade_date=d) for d in segment_days],
+                ignore_index=True,
+            )
+            frames.append(repeated)
+
+    if frames:
+        out_df = pd.concat(frames, ignore_index=True)
+    else:
+        out_df = pd.DataFrame(columns=["snapshot_date"] + base_cols + ["trade_date"])
+
+    out_cols = ["trade_date", "snapshot_date"] + [
+        col for col in base_cols if col != "snapshot_date"
+    ]
+    out_df = out_df[out_cols]
+    out_df.to_csv(output_path, index=False)
+    return len(out_df)
+
 def main():
     pro = init_tushare()
     today = datetime.now(tz=BJT).date()
@@ -77,6 +128,12 @@ def main():
         True
         if backfill_env is None
         else backfill_env.lower() not in {"", "false", "0", "no"}
+    )
+    daily_index_weight_env = os.getenv("INDEX_WEIGHT_DAILY")
+    backfill_index_weight_daily = (
+        True
+        if daily_index_weight_env is None
+        else daily_index_weight_env.lower() not in {"", "false", "0", "no"}
     )
 
     for idx, d in enumerate(trade_dates, start=1):
@@ -123,6 +180,29 @@ def main():
                 start_date=start_str,
                 end_date=end_str,
             )
+                df = pd.read_csv(output_path)
+            else:
+                df = None
+
+            if backfill_index_weight_daily:
+                daily_path = (
+                    DATA_DIR
+                    / "index_weight_daily"
+                    / f"index_weight_daily_{safe_code}_{start_str}_{end_str}.csv"
+                )
+                if has_data_rows(daily_path):
+                    print(f"[{idx}/{total_index}] 指数 {code} 日频 跳过（已存在）")
+                else:
+                    if df is None:
+                        df = pd.read_csv(output_path)
+                    print(
+                        f"[{idx}/{total_index}] 指数 {code} 生成日频：{start_str} -> {end_str}"
+                    )
+                    rows = expand_index_weight_daily(df, trade_dates, daily_path)
+                    print(
+                        f"[{idx}/{total_index}] 指数 {code} 日频已写入 {daily_path} "
+                        f"({rows} 行)"
+                    )
 
 if __name__ == "__main__":
     main()

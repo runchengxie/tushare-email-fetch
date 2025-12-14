@@ -40,15 +40,17 @@ python scripts/fetch_tushare.py
   - `BACKFILL_START_DATE=YYYYMMDD`
   - `BACKFILL_END_DATE=YYYYMMDD`
   未指定时脚本会提示并使用默认值。
-- **是否顺带补指数权重**：默认会抓 `index_weight`；如不需要，可设置 `BACKFILL_INDEX_WEIGHT=false`。时间范围与 `INDEX_CODES` 同 backfill，共用跳过逻辑。
+- **指数权重**：
+  - 默认会抓 `index_weight`；如不需要，可设置 `BACKFILL_INDEX_WEIGHT=false`。
+  - 默认同时生成日频展开版（按交易日向前填充到下一个调仓日），输出到 `data/index_weight_daily/`；如不需要，可设置 `INDEX_WEIGHT_DAILY=false`。
 
 示例：
 
 ```bash
 # 只补 ST，默认 2016-01-01 到今天，已存在文件跳过
-TUSHARE_TOKEN=... python scripts/backfill.py
+TUSHARE_TOKEN=... BACKFILL_INDEX_WEIGHT=false python scripts/backfill.py
 
-# 补 2020-2022 的 ST + 指数权重（默认就会抓指数；如不需要可设 BACKFILL_INDEX_WEIGHT=false）
+# 补 2020-2022 的 ST + 指数权重 + 日频展开（默认就会抓指数+日频）
 TUSHARE_TOKEN=... BACKFILL_START_DATE=20200101 BACKFILL_END_DATE=20221231 \
 INDEX_CODES=000300.SH,000905.SH python scripts/backfill.py
 ```
