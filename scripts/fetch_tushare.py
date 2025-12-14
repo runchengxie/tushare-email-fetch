@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from email.message import EmailMessage
@@ -54,10 +55,28 @@ def init_tushare() -> ts.pro_api:
     ts.set_token(token)
     return ts.pro_api()
 
+def fetch_with_retry(fn, *, label: str, retries: int = 3, base_delay: float = 1.0):
+    for attempt in range(1, retries + 1):
+        try:
+            return fn()
+        except Exception as exc:
+            if attempt == retries:
+                print(f"{label} failed after {retries} attempts; re-raising.")
+                raise
+            delay = base_delay * attempt
+            print(
+                f"{label} failed (attempt {attempt}/{retries}): {exc}. "
+                f"Retrying in {delay:.1f}s..."
+            )
+            time.sleep(delay)
+
 
 def fetch_stock_st(pro: ts.pro_api, trade_date: str) -> FetchResult:
     print(f"Fetching stock_st for trade_date={trade_date}")
-    df = pro.stock_st(trade_date=trade_date)
+    df = fetch_with_retry(
+        lambda: pro.stock_st(trade_date=trade_date),
+        label=f"stock_st {trade_date}",
+    )
     output_path = DATA_DIR / "stock_st" / f"stock_st_{trade_date}.csv"
     ensure_data_dir(output_path)
     df.to_csv(output_path, index=False)
@@ -72,8 +91,11 @@ def fetch_index_weight(
         f"Fetching index_weight for index_code={index_code} "
         f"start_date={start_date} end_date={end_date}"
     )
-    df = pro.index_weight(
-        index_code=index_code, start_date=start_date, end_date=end_date
+    df = fetch_with_retry(
+        lambda: pro.index_weight(
+            index_code=index_code, start_date=start_date, end_date=end_date
+        ),
+        label=f"index_weight {index_code} {start_date}->{end_date}",
     )
     safe_code = index_code.replace(".", "_")
     output_path = (

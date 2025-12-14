@@ -29,6 +29,29 @@ python scripts/fetch_tushare.py
 - `INDEX_CODES=000300.SH,000905.SH`
 - 邮件配置 (可选)：`EMAIL_TO`, `EMAIL_FROM`, `SMTP_SERVER`, `SMTP_PORT` (默认 587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (设为 `false` 可禁用)。
 
+## 补历史数据 (Backfill)
+
+脚本：`scripts/backfill_stock_st.py`
+
+- **断点续跑**：目标 CSV 已存在且非空就跳过，避免重复下载。
+- **交易日过滤**：先拉取交易日历，只对交易日请求 `stock_st`，减少空数据浪费配额。
+- **自定义日期范围**：通过环境变量覆盖默认区间（默认 `2016-01-01` 起算到“今天”）：
+  - `BACKFILL_START_DATE=YYYYMMDD`
+  - `BACKFILL_END_DATE=YYYYMMDD`
+  未指定时脚本会提示并使用默认值。
+- **是否顺带补指数权重**：设置 `BACKFILL_INDEX_WEIGHT=true` 时，会按同一时间范围、`INDEX_CODES` 列表抓一次 `index_weight`，已有文件同样跳过。
+
+示例：
+
+```bash
+# 只补 ST，默认 2016-01-01 到今天，已存在文件跳过
+TUSHARE_TOKEN=... python scripts/backfill_stock_st.py
+
+# 补 2020-2022 的 ST + 指数权重
+TUSHARE_TOKEN=... BACKFILL_START_DATE=20200101 BACKFILL_END_DATE=20221231 \
+BACKFILL_INDEX_WEIGHT=true INDEX_CODES=000300.SH,000905.SH python scripts/backfill_stock_st.py
+```
+
 ## GitHub Actions 调教指南
 
 1. **喂点 Secrets (配置密钥)**：
@@ -49,3 +72,4 @@ python scripts/fetch_tushare.py
 - **关于积分**：Tushare 不是慈善家。根据文档，你的 Token 积分得够格才行：`stock_st` 需要 3000 分，`index_weight` 需要 2000 分。*积分不够，神仙难救。*
 - **关于邮件**：如果 `EMAIL_TO` 或 `SMTP_SERVER` 没填，脚本会很识趣地跳过发邮件步骤，只抓数据。
 - **关于产出**：CSV 文件会乖乖躺在 `data/stock_st/` 和 `data/index_weight/` 目录下，文件名会以此日期和代码范围命名，强迫症友好。
+- **稳一点**：抓取增加了简单重试/回退逻辑，碰到网络抖动会自动再试几次。
