@@ -31,7 +31,7 @@ python scripts/fetch_tushare.py
 
 ## 补历史数据 (Backfill)
 
-脚本：`scripts/backfill_stock_st.py`
+脚本：`scripts/backfill.py`
 
 - **断点续跑**：目标 CSV 已存在且非空就跳过，避免重复下载。
 - **交易日过滤**：先拉取交易日历，只对交易日请求 `stock_st`，减少空数据浪费配额。
@@ -39,17 +39,17 @@ python scripts/fetch_tushare.py
   - `BACKFILL_START_DATE=YYYYMMDD`
   - `BACKFILL_END_DATE=YYYYMMDD`
   未指定时脚本会提示并使用默认值。
-- **是否顺带补指数权重**：设置 `BACKFILL_INDEX_WEIGHT=true` 时，会按同一时间范围、`INDEX_CODES` 列表抓一次 `index_weight`，已有文件同样跳过。
+- **是否顺带补指数权重**：默认会抓 `index_weight`；如不需要，可设置 `BACKFILL_INDEX_WEIGHT=false`。时间范围与 `INDEX_CODES` 同 backfill，共用跳过逻辑。
 
 示例：
 
 ```bash
 # 只补 ST，默认 2016-01-01 到今天，已存在文件跳过
-TUSHARE_TOKEN=... python scripts/backfill_stock_st.py
+TUSHARE_TOKEN=... python scripts/backfill.py
 
-# 补 2020-2022 的 ST + 指数权重
+# 补 2020-2022 的 ST + 指数权重（默认就会抓指数；如不需要可设 BACKFILL_INDEX_WEIGHT=false）
 TUSHARE_TOKEN=... BACKFILL_START_DATE=20200101 BACKFILL_END_DATE=20221231 \
-BACKFILL_INDEX_WEIGHT=true INDEX_CODES=000300.SH,000905.SH python scripts/backfill_stock_st.py
+INDEX_CODES=000300.SH,000905.SH python scripts/backfill.py
 ```
 
 ## GitHub Actions 调教指南

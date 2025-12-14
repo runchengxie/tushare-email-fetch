@@ -62,9 +62,11 @@ def main():
         print("未找到交易日，检查日期范围或交易所代码。")
         return
 
+    backfill_env = os.getenv("BACKFILL_INDEX_WEIGHT")
     backfill_index_weight = (
-        os.getenv("BACKFILL_INDEX_WEIGHT", "false").lower()
-        not in {"", "false", "0", "no"}
+        True
+        if backfill_env is None
+        else backfill_env.lower() not in {"", "false", "0", "no"}
     )
 
     for idx, d in enumerate(trade_dates, start=1):
