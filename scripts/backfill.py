@@ -161,28 +161,25 @@ def main():
                 / "index_weight"
                 / f"index_weight_{safe_code}_{start_str}_{end_str}.csv"
             )
-            if has_data_rows(output_path):
-                print(f"[{idx}/{total_index}] 指数 {code} 跳过（已存在）")
-                continue
+            has_snapshot = has_data_rows(output_path)
+            if not has_snapshot:
+                if output_path.exists():
+                    print(
+                        f"[{idx}/{total_index}] 指数 {code} 发现空/无数据文件，重拉："
+                        f"{start_str} -> {end_str}"
+                    )
+                else:
+                    print(
+                        f"[{idx}/{total_index}] 指数 {code} 拉取中：{start_str} -> {end_str}"
+                    )
+                fetch_index_weight(
+                    pro,
+                    index_code=code,
+                    start_date=start_str,
+                    end_date=end_str,
+                )
 
-            if output_path.exists():
-                print(
-                    f"[{idx}/{total_index}] 指数 {code} 发现空/无数据文件，重拉："
-                    f"{start_str} -> {end_str}"
-                )
-            else:
-                print(
-                    f"[{idx}/{total_index}] 指数 {code} 拉取中：{start_str} -> {end_str}"
-                )
-            fetch_index_weight(
-                pro,
-                index_code=code,
-                start_date=start_str,
-                end_date=end_str,
-            )
-                df = pd.read_csv(output_path)
-            else:
-                df = None
+            df = pd.read_csv(output_path)
 
             if backfill_index_weight_daily:
                 daily_path = (
@@ -193,8 +190,6 @@ def main():
                 if has_data_rows(daily_path):
                     print(f"[{idx}/{total_index}] 指数 {code} 日频 跳过（已存在）")
                 else:
-                    if df is None:
-                        df = pd.read_csv(output_path)
                     print(
                         f"[{idx}/{total_index}] 指数 {code} 生成日频：{start_str} -> {end_str}"
                     )
