@@ -66,7 +66,9 @@ def expand_index_weight_daily(
         return 0
 
     df = df.copy()
-    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+    df["trade_date"] = (
+        pd.to_datetime(df["trade_date"].astype(str), format="%Y%m%d").dt.date
+    )
     trade_dates = sorted(trade_dates)
     base_cols = [col for col in df.columns if col != "trade_date"]
 
