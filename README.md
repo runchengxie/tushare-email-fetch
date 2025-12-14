@@ -35,6 +35,7 @@ python scripts/fetch_tushare.py
 
 - **断点续跑**：目标 CSV 已存在且非空就跳过，避免重复下载。
 - **交易日过滤**：先拉取交易日历，只对交易日请求 `stock_st`，减少空数据浪费配额。
+- **空文件重拉**：若已有 CSV 只有表头（0 行数据），会视为未下载并重新抓取一次。
 - **自定义日期范围**：通过环境变量覆盖默认区间（默认 `2016-01-01` 起算到“今天”）：
   - `BACKFILL_START_DATE=YYYYMMDD`
   - `BACKFILL_END_DATE=YYYYMMDD`
