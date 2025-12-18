@@ -38,7 +38,6 @@ EXCLUDE_DIRS_ANYWHERE: Set[str] = {
 # Directories to exclude ONLY if they are in the project root directory.
 # This allows keeping nested directories with the same name (e.g., 'src/app/data').
 EXCLUDE_DIRS_ROOT_ONLY: Set[str] = {
-    "data",  # User-specific data, not source code
     "project_tools",
     "tests",
     ".ruff_cache",    
