@@ -89,7 +89,15 @@ def init_tushare() -> ts.pro_api:
     ts.set_token(token)
     return ts.pro_api()
 
-def fetch_with_retry(fn, *, label: str, retries: int = 3, base_delay: float = 1.0):
+def fetch_with_retry(
+    fn,
+    *,
+    label: str,
+    retries: int = 8,
+    base_delay: float = 2.0,
+    max_delay: float = 60.0,
+):
+    """Retry with capped exponential backoff to ride out brief network drops."""
     for attempt in range(1, retries + 1):
         try:
             return fn()
@@ -97,7 +105,7 @@ def fetch_with_retry(fn, *, label: str, retries: int = 3, base_delay: float = 1.
             if attempt == retries:
                 print(f"{label} failed after {retries} attempts; re-raising.")
                 raise
-            delay = base_delay * attempt
+            delay = min(base_delay * 2 ** (attempt - 1), max_delay)
             print(
                 f"{label} failed (attempt {attempt}/{retries}): {exc}. "
                 f"Retrying in {delay:.1f}s..."

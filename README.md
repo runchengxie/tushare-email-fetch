@@ -133,7 +133,7 @@ INDEX_CODES=000300.SH,000905.SH python scripts/backfill.py
   * `data/index_weight/index_weight_<code_with_dot_replaced_by_underscore>.csv`（例如 `index_weight_000300_SH.csv`）
   * `data/index_weight_daily/index_weight_daily_<code_with_dot_replaced_by_underscore>.csv`（例如 `index_weight_daily_000300_SH.csv`，包含 `weight` 与 `drift_weight`）
 
-* 抓取增加了简单重试/回退逻辑，碰到网络抖动会自动再试几次。
+* 抓取增加了带封顶的指数回退重试（默认 8 次，最长间隔约 60s），短时网络抖动会自动撑住不会立刻失败。
 
 ## 默认指数选择思路
 
