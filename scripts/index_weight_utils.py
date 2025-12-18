@@ -171,6 +171,7 @@ def _compute_drift_weights(
     denom = denom.replace(0, pd.NA)
     drift = weighted.div(denom, axis=0)
 
+    drift.columns.name = None
     drift_long = (
         drift.stack()
         .rename("drift_weight")

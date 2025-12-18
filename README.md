@@ -19,13 +19,14 @@
 如果要在本地运行（或者调试），请按以下步骤操作：
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --locked --no-dev   # 使用 uv.lock 安装运行时依赖
+# 若未安装 uv，可临时用 pip：pip install -r requirements.txt（由 uv 导出）
 
 # 设置Tushare Token
-export TUSHARE_TOKEN=your_token_here
-python scripts/fetch_tushare.py
+TUSHARE_TOKEN=your_token_here uv run --locked python scripts/fetch_tushare.py
+
+# 跑单测（覆盖日频展开和空文件判断）
+uv run --locked pytest
 ```
 
 本地测试和Github Action运行时的可选环境变量：
@@ -104,6 +105,8 @@ INDEX_CODES=000300.SH,000905.SH python scripts/backfill.py
 * 定时任务：周一到周五 UTC 01:25 (也就是北京时间 09:25，对应A股当日开盘前)。
 
 * 手动触发：Actions → `tushare-daily` → `Run workflow` (支持手动覆盖日期，以此来修补历史数据)。
+
+* 依赖通过 `uv sync --locked --no-dev` + `uv run --locked ...` 安装和运行，记得提交 `pyproject.toml` 与 `uv.lock`。
 
 3.自动存档：工作流会利用 `GITHUB_TOKEN` 把抓到的 `data/` 自动 Commit 回仓库。
 

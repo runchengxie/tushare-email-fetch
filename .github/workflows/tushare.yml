@@ -33,8 +33,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --locked --no-dev
 
       - name: Fetch Tushare data
         env:
@@ -50,7 +55,7 @@ jobs:
           TRADE_DATE: ${{ github.event.inputs.trade_date }}
           INDEX_START_DATE: ${{ github.event.inputs.index_start_date }}
           INDEX_END_DATE: ${{ github.event.inputs.index_end_date }}
-        run: python scripts/fetch_tushare.py
+        run: uv run --locked python scripts/fetch_tushare.py
 
       - name: Commit data back to repository
         run: |
