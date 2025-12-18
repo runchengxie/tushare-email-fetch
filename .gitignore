@@ -211,3 +211,5 @@ full_project_source.txt
 
 # Output
 /data/
+.gemini/
+gha-creds-*.json

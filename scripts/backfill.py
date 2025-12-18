@@ -71,6 +71,10 @@ def main():
         if daily_index_weight_env is None
         else daily_index_weight_env.lower() not in {"", "false", "0", "no"}
     )
+    drift_env = os.getenv("INDEX_WEIGHT_DRIFT")
+    backfill_index_weight_drift = (
+        True if drift_env is None else drift_env.lower() not in {"", "false", "0", "no"}
+    )
     force_full_refresh = bool_env("INDEX_FULL_REFRESH", False)
 
     for idx, d in enumerate(trade_dates, start=1):
@@ -102,6 +106,7 @@ def main():
                 end_date=end_str,
                 force_full_refresh=force_full_refresh,
                 generate_daily=backfill_index_weight_daily,
+                generate_drift=backfill_index_weight_drift,
             )
 
 if __name__ == "__main__":

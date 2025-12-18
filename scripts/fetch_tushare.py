@@ -111,6 +111,100 @@ def load_trade_dates(pro: ts.pro_api, start: date, end: date) -> list[date]:
     ]
 
 
+def latest_trading_date(pro: ts.pro_api, target: date, *, lookback_days: int = 30) -> date:
+    """Return the latest trading date <= target. Raises if none found in lookback window."""
+    start = target - timedelta(days=lookback_days)
+    dates = load_trade_dates(pro, start, target)
+    if not dates:
+        raise SystemExit(
+            f"未能在最近 {lookback_days} 天内找到交易日，检查交易所日历或日期设置。"
+        )
+    return max(dates)
+
+
+def _month_end(dt: date) -> date:
+    """Return the last day of the month for dt."""
+    next_month = (dt.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return next_month - timedelta(days=1)
+
+
+def iter_month_ranges(start_dt: date, end_dt: date) -> list[tuple[date, date]]:
+    """Yield (month_start, month_end) for each month overlapping [start_dt, end_dt]."""
+    if start_dt > end_dt:
+        return []
+    cursor = start_dt.replace(day=1)
+    ranges: list[tuple[date, date]] = []
+    while cursor <= end_dt:
+        month_end = _month_end(cursor)
+        ranges.append((cursor, min(month_end, end_dt)))
+        cursor = month_end + timedelta(days=1)
+    return ranges
+
+
+def fetch_index_weight_monthly(
+    pro: ts.pro_api, index_code: str, start_dt: date, end_dt: date
+) -> pd.DataFrame:
+    """按月分段抓 index_weight，避免长区间被截断。"""
+    ranges = iter_month_ranges(start_dt, end_dt)
+    frames: list[pd.DataFrame] = []
+    for start, end in ranges:
+        start_str = start.strftime("%Y%m%d")
+        end_str = end.strftime("%Y%m%d")
+        df = fetch_with_retry(
+            lambda: pro.index_weight(
+                index_code=index_code, start_date=start_str, end_date=end_str
+            ),
+            label=f"index_weight {index_code} {start_str}->{end_str}",
+        )
+        if not df.empty:
+            frames.append(df)
+    if frames:
+        out = pd.concat(frames, ignore_index=True)
+        out.drop_duplicates(
+            subset=["index_code", "con_code", "trade_date"], inplace=True
+        )
+        return out
+    return pd.DataFrame()
+
+
+def fetch_daily_prices_for_codes(
+    pro: ts.pro_api, codes: list[str], start_date: str, end_date: str
+) -> pd.DataFrame:
+    """抓取给定股票代码列表在区间内的日收盘价。"""
+    codes = sorted(set(codes))
+    if not codes:
+        return pd.DataFrame(columns=["ts_code", "trade_date", "close"])
+
+    frames: list[pd.DataFrame] = []
+    total = len(codes)
+    for idx, code in enumerate(codes, start=1):
+        label = f"daily {code} {start_date}->{end_date}"
+        print(f"[prices {idx}/{total}] {label}")
+        df = fetch_with_retry(
+            lambda: pro.daily(
+                ts_code=code, start_date=start_date, end_date=end_date
+            ),
+            label=label,
+        )
+        if df.empty:
+            continue
+        frames.append(df[["ts_code", "trade_date", "close"]])
+
+    if frames:
+        out = pd.concat(frames, ignore_index=True)
+        out.drop_duplicates(subset=["ts_code", "trade_date"], keep="last", inplace=True)
+        return out
+    return pd.DataFrame(columns=["ts_code", "trade_date", "close"])
+
+
+def normalize_trade_date(pro: ts.pro_api, trade_date: str) -> tuple[str, bool]:
+    """Ensure trade_date落在最近的交易日。返回 (最终日期, 是否调整过)。"""
+    target = parse_yyyymmdd(trade_date)
+    last_open = latest_trading_date(pro, target)
+    adjusted = last_open != target
+    return last_open.strftime("%Y%m%d"), adjusted
+
+
 def fetch_stock_st(pro: ts.pro_api, trade_date: str) -> FetchResult:
     print(f"Fetching stock_st for trade_date={trade_date}")
     df = fetch_with_retry(
@@ -133,14 +227,11 @@ def fetch_index_weight(
 ) -> FetchResult:
     print(
         f"Fetching index_weight for index_code={index_code} "
-        f"start_date={start_date} end_date={end_date}"
+        f"start_date={start_date} end_date={end_date} (按月分段)"
     )
-    df = fetch_with_retry(
-        lambda: pro.index_weight(
-            index_code=index_code, start_date=start_date, end_date=end_date
-        ),
-        label=f"index_weight {index_code} {start_date}->{end_date}",
-    )
+    start_dt = parse_yyyymmdd(start_date)
+    end_dt = parse_yyyymmdd(end_date)
+    df = fetch_index_weight_monthly(pro, index_code=index_code, start_dt=start_dt, end_dt=end_dt)
     safe_code = index_code.replace(".", "_")
     if output_path is None:
         output_path = (
@@ -164,6 +255,7 @@ def refresh_index_weight(
     end_date: str,
     force_full_refresh: bool,
     generate_daily: bool,
+    generate_drift: bool,
 ) -> list[FetchResult]:
     """Incrementally pull index_weight and optionally expand to daily."""
     raw_path = index_weight_raw_path(index_code)
@@ -175,18 +267,21 @@ def refresh_index_weight(
     elif force_full_refresh and has_data_rows(raw_path):
         print(f"INDEX_FULL_REFRESH=true，忽略已存在文件 {raw_path}")
 
-    start_date = default_start
     last_trade: date | None = None
+    start_dt = parse_yyyymmdd(default_start)
+    end_dt = parse_yyyymmdd(end_date)
+
+    fetch_start = start_dt
     if existing_df is not None and not existing_df.empty:
         _, last_trade = _min_max_trade_date(existing_df)
-        start_date = (last_trade + timedelta(days=1)).strftime("%Y%m%d")
+        fetch_start = last_trade + timedelta(days=1)
 
-    start_dt = parse_yyyymmdd(start_date)
-    end_dt = parse_yyyymmdd(end_date)
+    # TuShare 建议以“月初-月末”区间来拉取，此处将抓取起点对齐到所在月初，后续去重。
+    fetch_start = fetch_start.replace(day=1)
 
     if start_dt > end_dt and existing_df is None:
         print(
-            f"index_weight {index_code} 未找到抓取区间，start_date {start_date} 晚于 end_date {end_date}"
+            f"index_weight {index_code} 未找到抓取区间，start_date {default_start} 晚于 end_date {end_date}"
         )
         return []
 
@@ -194,7 +289,7 @@ def refresh_index_weight(
     rows_added = 0
     final_df: pd.DataFrame
 
-    if start_dt > end_dt and existing_df is not None:
+    if fetch_start > end_dt and existing_df is not None:
         print(
             f"index_weight {index_code} 已是最新，最后 trade_date="
             f"{last_trade.strftime('%Y%m%d') if last_trade else 'unknown'}"
@@ -202,30 +297,27 @@ def refresh_index_weight(
         final_df = existing_df
     else:
         print(
-            f"Fetching index_weight for {index_code} start_date={start_date} end_date={end_date}"
+            f"按月抓取 index_weight for {index_code} "
+            f"start_date={fetch_start.strftime('%Y%m%d')} end_date={end_date}"
         )
-        df_new = fetch_with_retry(
-            lambda: pro.index_weight(
-                index_code=index_code, start_date=start_date, end_date=end_date
-            ),
-            label=f"index_weight {index_code} {start_date}->{end_date}",
+        df_new = (
+            fetch_index_weight_monthly(
+                pro, index_code=index_code, start_dt=fetch_start, end_dt=end_dt
+            )
+            if fetch_start <= end_dt
+            else pd.DataFrame()
         )
 
         if existing_df is not None and not force_full_refresh:
-            rows_added = len(df_new)
-            if df_new.empty:
-                print(
-                    f"index_weight {index_code} 无新增数据（起始 {start_date}），保持现有文件。"
-                )
-                final_df = existing_df
-            else:
-                final_df = pd.concat([existing_df, df_new], ignore_index=True)
-                final_df.drop_duplicates(
-                    subset=["index_code", "con_code", "trade_date"], inplace=True
-                )
+            before = len(existing_df)
+            final_df = pd.concat([existing_df, df_new], ignore_index=True)
+            final_df.drop_duplicates(
+                subset=["index_code", "con_code", "trade_date"], inplace=True
+            )
+            rows_added = len(final_df) - before
         else:
             final_df = df_new.copy()
-            rows_added = len(df_new)
+            rows_added = len(final_df)
 
         if not final_df.empty:
             final_df = final_df.sort_values(
@@ -236,7 +328,9 @@ def refresh_index_weight(
         if should_write:
             final_df.to_csv(raw_path, index=False)
             rows_for_result = (
-                rows_added if existing_df is not None and not force_full_refresh else len(final_df)
+                rows_added
+                if existing_df is not None and not force_full_refresh
+                else len(final_df)
             )
             print(
                 f"Saved index_weight to {raw_path} "
@@ -255,6 +349,19 @@ def refresh_index_weight(
         needs_daily = force_full_refresh or rows_added > 0 or not has_data_rows(
             daily_path
         )
+        if (
+            generate_drift
+            and not needs_daily
+            and daily_path.exists()
+        ):
+            try:
+                existing_cols = pd.read_csv(daily_path, nrows=0).columns
+                if "drift_weight" not in existing_cols:
+                    print(f"{daily_path} 缺少漂移权重列，重新生成日频数据。")
+                    needs_daily = True
+            except Exception as exc:  # pragma: no cover - defensive logging
+                print(f"读取 {daily_path} 失败，重新生成日频数据：{exc}")
+                needs_daily = True
         if not needs_daily:
             return results
 
@@ -268,7 +375,20 @@ def refresh_index_weight(
 
         if daily_start <= daily_end:
             trade_dates = load_trade_dates(pro, daily_start, daily_end)
-            rows_daily = expand_index_weight_daily(final_df, trade_dates, daily_path)
+            price_df = None
+            if generate_drift and not final_df.empty and trade_dates:
+                daily_start_str = daily_start.strftime("%Y%m%d")
+                daily_end_str = daily_end.strftime("%Y%m%d")
+                price_df = fetch_daily_prices_for_codes(
+                    pro=pro,
+                    codes=final_df["con_code"].unique().tolist(),
+                    start_date=daily_start_str,
+                    end_date=daily_end_str,
+                )
+
+            rows_daily = expand_index_weight_daily(
+                final_df, trade_dates, daily_path, prices=price_df
+            )
             results.append(
                 FetchResult(
                     label=f"index_weight_daily {index_code}",
@@ -343,11 +463,17 @@ def main() -> None:
     end_date = optional_env("INDEX_END_DATE", today_str)
     force_full_refresh = bool_env("INDEX_FULL_REFRESH", False)
     generate_daily = bool_env("INDEX_WEIGHT_DAILY", True)
+    generate_drift = bool_env("INDEX_WEIGHT_DRIFT", True)
 
     pro = init_tushare()
     results: List[FetchResult] = []
 
-    results.append(fetch_stock_st(pro, trade_date=trade_date))
+    normalized_trade_date, adjusted = normalize_trade_date(pro, trade_date)
+    if adjusted:
+        print(
+            f"TRADE_DATE {trade_date} 非交易日，使用最近交易日 {normalized_trade_date} 抓取 stock_st"
+        )
+    results.append(fetch_stock_st(pro, trade_date=normalized_trade_date))
 
     index_codes = parse_index_codes()
     for code in index_codes:
@@ -359,6 +485,7 @@ def main() -> None:
                 end_date=end_date,
                 force_full_refresh=force_full_refresh,
                 generate_daily=generate_daily,
+                generate_drift=generate_drift,
             )
         )
 
