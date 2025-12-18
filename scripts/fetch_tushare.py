@@ -21,6 +21,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 BJT = ZoneInfo("Asia/Shanghai")
 DEFAULT_INDEX_START_DATE = "20160101"
+DEFAULT_INDEX_CODES = [
+    "000300.SH",  # 沪深300
+    "000905.SH",  # 中证500
+    "000852.SH",  # 中证1000
+    "399006.SZ",  # 创业板指
+    "000016.SH",  # 上证50
+]
 
 
 @dataclass
@@ -410,7 +417,7 @@ def summarize_results(results: Iterable[FetchResult]) -> str:
 def parse_index_codes() -> List[str]:
     raw = optional_env("INDEX_CODES")
     if not raw:
-        return ["000300.SH", "000905.SH"]
+        return DEFAULT_INDEX_CODES
     return [code.strip() for code in raw.split(",") if code.strip()]
 
 

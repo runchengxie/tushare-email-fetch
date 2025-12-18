@@ -6,7 +6,7 @@
 
 * 抓 ST 股 (`stock_st`)：基于指定的 `trade_date`（默认是北京时间当天）。*帮你看看今天谁在雷区蹦迪。*
 
-* 抓指数权重 (`index_weight`)：针对可配置的指数代码（默认套餐：沪深300 `000300.SH` 和中证500 `000905.SH`）。按照 TuShare 推荐的“月初-月末”分段拉取，默认从 2016-01-01 起抓全量，并在已有文件基础上增量补齐。
+* 抓指数权重 (`index_weight`)：针对可配置的指数代码（默认套餐：沪深300 `000300.SH`、中证500 `000905.SH`、中证1000 `000852.SH`、创业板指 `399006.SZ`、上证50 `000016.SH`）。按照 TuShare 推荐的“月初-月末”分段拉取，默认从 2016-01-01 起抓全量，并在已有文件基础上增量补齐。
 
 * 日频展开：自动将快照权重向前填充到下一个调仓日，输出到 `data/index_weight_daily/index_weight_daily_<code_with_dot_replaced_by_underscore>.csv`（例如 `index_weight_daily_000300_SH.csv`）。文件同时包含快照权重 `weight`（目标权重）和基于收盘价推算的漂移权重 `drift_weight`（选项，可关闭）。
 
@@ -43,7 +43,7 @@ uv run --locked pytest
 
 * `INDEX_WEIGHT_DRIFT=false`（可选，关闭基于收盘价计算的漂移权重，仅保留快照权重）
 
-* `INDEX_CODES=000300.SH,000905.SH` 设置想要抓取的指数成分的指数代码列表，逗号分隔（默认值即 `000300.SH,000905.SH`，对应沪深300/中证500）
+* `INDEX_CODES=000300.SH,000905.SH,000852.SH,399006.SZ,000016.SH` 设置想要抓取的指数成分的指数代码列表，逗号分隔（默认值同上，对应沪深300/中证500/中证1000/创业板指/上证50）
 
 * 邮件配置 (可选)：`EMAIL_TO`, `EMAIL_FROM`, `SMTP_SERVER`, `SMTP_PORT` (默认 587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS` (设为 `false` 可禁用)，`EMAIL_SUBJECT_PREFIX`（默认 `[tushare]`）。
 
@@ -134,3 +134,10 @@ INDEX_CODES=000300.SH,000905.SH python scripts/backfill.py
   * `data/index_weight_daily/index_weight_daily_<code_with_dot_replaced_by_underscore>.csv`（例如 `index_weight_daily_000300_SH.csv`，包含 `weight` 与 `drift_weight`）
 
 * 抓取增加了简单重试/回退逻辑，碰到网络抖动会自动再试几次。
+
+## 默认指数选择思路
+
+* 300/500/1000 分别覆盖大盘、中盘、小盘，组合起来更像全市场的分层取样。
+* 创业板指（399006）偏“新经济”与成长属性，补充传统行业的暴露。
+* 上证50（000016）只有 50 只成分股，价格抓取调用次数少，积分/耗时性价比高。
+* 这些都是常用的官方口径，默认值追求“大而全”和调用成本的平衡，仍可通过 `INDEX_CODES` 自由调整。
